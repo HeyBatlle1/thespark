@@ -1,0 +1,21 @@
+{
+    "git.ignoreLimitWarning": true,
+    "mcpServer.port": 5175,
+    "editor.defaultFormatter": "kodu-ai.claude-dev-experimental",
+    "notebook.defaultFormatter": "saoudrizwan.claude-dev",
+    "mcp": {
+        
+        "inputs": [],
+        "servers": {
+            "mcp-server-time": {
+                "command": "python",
+                "args": [
+                    "-m",
+                    "mcp_server_time",
+                    "--local-timezone=America/Los_Angeles"
+                ],
+                "env": {}
+            }
+        }
+    }
+}
