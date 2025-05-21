@@ -5,9 +5,7 @@ import CommentItem from './CommentItem'; // Import CommentItem component
 
 // Initialize Google Generative AI (Load API key from environment variables)
 const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY; // Assuming using Create React App or similar setup
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// TODO: Handle case where API key is not loaded
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Define the free tier limit for AI styles
 const FREE_AI_STYLE_LIMIT = 1;
@@ -16,22 +14,36 @@ const FREE_AI_STYLE_LIMIT = 1;
 function ProfilePage() {
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true); // State to manage loading
+  const [redirectTo, setRedirectTo] = useState(null); // State to manage redirection target
   const [showAIStyling, setShowAIStyling] = useState(false); // State to manage AI styling interface visibility
   const [aiPrompt, setAiPrompt] = useState(''); // State for AI styling prompt
   const [generatingStyle, setGeneratingStyle] = useState(false); // State for AI generation loading
-  const [error, setError] = useState(null); // State to manage errors
+  const [aiError, setAiError] = useState(null); // State to manage errors specifically for AI styling
   const [profileBannerUrl, setProfileBannerUrl] = useState(''); // State for profile banner image URL
+  const [fetchError, setFetchError] = useState(null); // State to manage errors during data fetching
   const [newPassword, setNewPassword] = useState(''); // State for new password input
   const [confirmPassword, setConfirmPassword] = useState(''); // State for confirm password input
   const [accountSettingsError, setAccountSettingsError] = useState(null); // State for account settings errors
+  const [currentPassword, setCurrentPassword] = useState(''); // State for current password input
+  const [newEmail, setNewEmail] = useState(''); // State for new email input
+  const [writingPortfolio, setWritingPortfolio] = useState(''); // State for user's writing/portfolio
+  const [sparksInfluences, setSparksInfluences] = useState(''); // State for user's sparks/influences
   const [userPosts, setUserPosts] = useState([]); // State to store user's posts
   const [userConnections, setUserConnections] = useState([]); // State to store user's connections
   const [connectedUsersProfileData, setConnectedUsersProfileData] = useState([]); // State to store connected users' profile data
   const [newComment, setNewComment] = useState(''); // State for new comment input
   const [postingComment, setPostingComment] = useState(false); // State to manage comment posting loading
   const [profileComments, setProfileComments] = useState([]); // State to store profile comments
+  const [connectionStatus, setConnectionStatus] = useState('not_connected'); // State to store connection status
+  const [isApiKeyLoaded, setIsApiKeyLoaded] = useState(!!GEMINI_API_KEY); // State to track if API key is loaded
 
   useEffect(() => {
+    if (!GEMINI_API_KEY) {
+      console.error('GEMINI_API_KEY is not loaded. AI styling will be disabled.');
+      setIsApiKeyLoaded(false);
+      setAiError('AI styling is currently unavailable. Please ensure the GEMINI_API_KEY is set in your environment variables.');
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         const user = session.user;
@@ -54,7 +66,7 @@ function ProfilePage() {
             // Fetch user's latest posts
             const { data: postsData, error: postsError } = await supabase
               .from('posts')
-              .select('*') // Select all fields for posts
+              .select('id, content, created_at') // Select specific fields including timestamp
               .eq('user_id', user.uid) // Filter by user ID (using user_id)
               .order('created_at', { ascending: false }) // Order by created_at descending
               .limit(5); // Limit to 5 latest posts
@@ -88,6 +100,35 @@ function ProfilePage() {
             }
             setProfileComments(commentsData);
 
+            // Fetch profile comments
+            fetchProfileComments(profileData.id);
+
+            // Check connection status between current user and profile owner
+            const { data: connectionData, error: connectionError } = await supabase
+              .from('connections')
+              .select('status')
+              .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`) // Fetch connections where current user is either user1 or user2
+              .or(`user1_id.eq.${profileData.id},user2_id.eq.${profileData.id}`); // Fetch connections where profile owner is either user1 or user2
+
+            if (connectionError) {
+              console.error('Error fetching connection status:', connectionError.message);
+              setConnectionStatus('error'); // Set status to error
+            } else if (connectionData && connectionData.length > 0) {
+              // Find the connection between the current user and the profile owner
+              const foundConnection = connectionData.find(conn =>
+                (conn.user1_id === user.id && conn.user2_id === profileData.id) ||
+                (conn.user1_id === profileData.id && conn.user2_id === user.id)
+              );
+
+              if (foundConnection) {
+                setConnectionStatus(foundConnection.status); // Set status based on the found connection
+              } else {
+                setConnectionStatus('not_connected'); // No direct connection found
+              }
+            } else {
+              setConnectionStatus('not_connected'); // No connections found at all
+            }
+
 
           } else {
             console.log('No profile data found for user:', user.uid);
@@ -102,20 +143,15 @@ function ProfilePage() {
 
         } catch (error) {
           console.error('Error fetching data:', error.message);
-          setError('Error fetching data.'); // Set error state
+          setFetchError('Error fetching data.'); // Set fetch error state
         } finally {
           setLoading(false); // Set loading to false
         }
       } else {
         // User is logged out
-        setProfileData(null);
-        setProfileBannerUrl('');
-        setUserPosts([]);
-        setUserConnections([]);
-        setConnectedUsersProfileData([]);
-        setProfileComments([]);
+        console.log('No user is signed in. Redirecting to login.');
+        setRedirectTo('/login'); // Redirect to login if no user
         setLoading(false); // Set loading to false if no user
-        // TODO: Handle case where no user is signed in (e.g., redirect to login)
       }
     });
 
@@ -127,7 +163,7 @@ function ProfilePage() {
   const handlePostComment = async () => {
     if (!newComment.trim()) {
       console.log('Comment content cannot be empty.');
-      // TODO: Display error message to user
+      setAiError('Comment content cannot be empty.'); // Display error message
       return;
     }
 
@@ -136,8 +172,8 @@ function ProfilePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !profileData) {
       console.error('User not logged in or profile data not available.');
+      setAiError('User not logged in or profile data not available.'); // Display error message
       setPostingComment(false);
-      // TODO: Display error message to user
       return;
     }
 
@@ -160,13 +196,31 @@ function ProfilePage() {
 
       console.log('Comment posted successfully!', data);
       setNewComment(''); // Clear the textarea after posting
-      // TODO: Refresh comments list or add the new comment to state
-      // For now, we'll rely on a manual refresh or re-fetching
+      fetchProfileComments(profileData.id); // Refresh comments after posting
     } catch (error) {
       console.error('Error posting comment:', error.message);
-      // TODO: Display error message to user
+      setAiError(`Error posting comment: ${error.message}`); // Display error message
     } finally {
       setPostingComment(false); // Set posting comment to false
+    }
+  };
+
+  // Function to fetch profile comments
+  const fetchProfileComments = async (profileUserId) => {
+    try {
+      const { data: commentsData, error: commentsError } = await supabase
+        .from('comments')
+        .select('*') // Select all fields for comments
+        .eq('profile_user_id', profileUserId) // Filter by profile owner's user ID
+        .order('created_at', { ascending: true }); // Order comments chronologically
+
+      if (commentsError) {
+        throw commentsError;
+      }
+      setProfileComments(commentsData);
+    } catch (error) {
+      console.error('Error fetching profile comments:', error.message);
+      setAiError(`Error fetching comments: ${error.message}`); // Display error message
     }
   };
 
@@ -175,15 +229,25 @@ function ProfilePage() {
     return <div className="flex items-center justify-center min-h-screen text-gray-200">Loading profile...</div>;
   }
 
-  if (!profileData) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-200">No profile data available. Please set up your profile.</div>;
-    // TODO: Implement proper redirection to profile setup
+  if (fetchError) {
+    return <div className="flex items-center justify-center min-h-screen text-red-500">{fetchError}</div>;
+  }
+
+  if (!profileData && !loading) { // Check if not loading and profileData is null
+    console.log('No profile data available. Redirecting to profile setup.');
+    setRedirectTo('/profilesetup'); // Redirect to profile setup if no profile data
+  }
+
+  if (redirectTo) {
+    // In a real application, you would use a router here
+    // For this example, we'll just display a message
+    return <div className="flex items-center justify-center min-h-screen text-gray-200">Redirecting to {redirectTo}...</div>;
   }
 
   // Handle AI Style My Profile button click
   const handleAIStylingClick = () => {
     setShowAIStyling(true);
-    setError(null); // Clear any previous errors
+    setAiError(null); // Clear any previous errors
   };
 
   // Handle Add Spark / Follow button click
@@ -191,7 +255,7 @@ function ProfilePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !profileData) {
       console.error('User not logged in or profile data not available.');
-      // TODO: Display error message to user
+      setAiError('User not logged in or profile data not available.'); // Display error message
       return;
     }
 
@@ -222,7 +286,7 @@ function ProfilePage() {
       // TODO: Update button state or display success message
     } catch (error) {
       console.error('Error adding spark:', error.message);
-      // TODO: Display error message to user
+      setAiError(`Error adding spark: ${error.message}`); // Display error message
     }
   };
 
@@ -246,32 +310,38 @@ function ProfilePage() {
         setProfileBannerUrl(''); // Clear the banner URL in local state
         setProfileData(prevProfileData => ({ ...prevProfileData, profile_picture_url: '' })); // Update profileData state as well (using profile_picture_url)
         console.log('Profile banner style reverted in Supabase and local state.', data);
-        setError(null); // Clear any previous errors
+        setAiError(null); // Clear any previous errors
       } catch (error) {
         console.error('Error reverting profile banner style:', error.message);
-        setError('Error reverting profile style.'); // Set error state
+        setAiError('Error reverting profile style.'); // Set error state
       }
     }
   };
 
   // Handle Generate Style button click
   const handleGenerateStyleClick = async () => {
+    if (!isApiKeyLoaded) {
+      console.error('GEMINI_API_KEY is not loaded. Cannot generate style.');
+      setAiError('AI styling is currently unavailable. Please ensure the GEMINI_API_KEY is set in your environment variables.');
+      return;
+    }
+
     if (!aiPrompt) {
       console.log('Please enter a prompt for AI styling.');
-      setError('Please enter a prompt for AI styling.'); // Set error state
+      setAiError('Please enter a prompt for AI styling.'); // Set error state for AI styling
       return;
     }
 
     // Check free tier limit
-    if (profileData.freeAiStylesUsed >= FREE_AI_STYLE_LIMIT) {
+    if (profileData.free_ai_styles_used >= FREE_AI_STYLE_LIMIT) { // Use free_ai_styles_used
       console.log('Free AI style limit reached. Upgrade for more.');
-      setError('Free AI style limit reached. Upgrade for more.'); // Set error state
+      setAiError('Free AI style limit reached. Upgrade for more.'); // Set error state for AI styling
       // TODO: Implement upgrade prompt
       return;
     }
 
     setGeneratingStyle(true); // Set generating style to true
-    setError(null); // Clear any previous errors
+    setAiError(null); // Clear any previous errors
 
     try {
       // Get the generative model configured for image responses
@@ -305,7 +375,7 @@ function ProfilePage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           console.error('No user is signed in.');
-          setError('No user is signed in.');
+          setAiError('No user is signed in.');
           setGeneratingStyle(false);
           return;
         }
@@ -359,12 +429,12 @@ function ProfilePage() {
 
       } else {
         console.log('No image data generated for the prompt.');
-        setError('No image data generated for the prompt.'); // Set error state
+        setAiError('No image data generated for the prompt.'); // Set error state
       }
 
     } catch (error) {
       console.error('Error generating AI style:', error);
-      setError('Error generating AI style.'); // Set error state
+      setAiError('Error generating AI style.'); // Set error state for AI styling
     } finally {
       setGeneratingStyle(false); // Set generating style to false
     }
@@ -397,9 +467,112 @@ function ProfilePage() {
     }
   };
 
+  // Handle email change with re-authentication
+  const handleEmailChange = async () => {
+    if (!currentPassword || !newEmail) {
+      setAccountSettingsError('Please enter your current password and new email address.');
+      return;
+    }
+
+    setAccountSettingsError(null); // Clear previous errors
+
+    try {
+      // Re-authenticate the user with their current password
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: profileData.email, // Use the current email for re-authentication
+        password: currentPassword,
+      });
+
+      if (reauthError) {
+        console.error('Error during re-authentication:', reauthError.message);
+        setAccountSettingsError(`Error changing email: Invalid current password.`);
+        return;
+      }
+
+      // If re-authentication is successful, update the email
+      const { data, error: updateError } = await supabase.auth.updateUser({
+        email: newEmail,
+      });
+
+      if (updateError) {
+        console.error('Error updating email:', updateError.message);
+        setAccountSettingsError(`Error changing email: ${updateError.message}`);
+      } else {
+        setAccountSettingsError('Email updated successfully! Please check your new email for a confirmation link.');
+        setCurrentPassword('');
+        setNewEmail('');
+        // Optionally, update the profileData state with the new email
+        setProfileData(prevProfileData => ({ ...prevProfileData, email: newEmail }));
+      }
+
+    } catch (error) {
+      console.error('Error during email change:', error.message);
+      setAccountSettingsError(`Error changing email: ${error.message}`);
+    }
+  };
+
+  // Handle saving writing/portfolio data
+  const handleSaveWritingPortfolio = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('No user is signed in.');
+      setAiError('No user is signed in. Please log in to save your writing/portfolio.'); // Use aiError for now, could add a separate state for this
+      return;
+    }
+
+    try {
+      // Update the user's profile in the 'users' table with writing/portfolio data
+      const { data, error } = await supabase
+        .from('users')
+        .update({ writing_portfolio: writingPortfolio }) // Assuming a column named 'writing_portfolio'
+        .eq('id', user.id); // Filter by user ID
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('Writing/portfolio data saved successfully!', data);
+      // Optionally, display a success message to the user
+      setAiError('Writing/portfolio saved successfully!'); // Use aiError for now
+    } catch (error) {
+      console.error('Error saving writing/portfolio data:', error.message);
+      setAiError(`Error saving writing/portfolio: ${error.message}`); // Use aiError for now
+    }
+  };
+
+  // Handle saving sparks/influences data
+  const handleSaveSparksInfluences = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('No user is signed in.');
+      setAiError('No user is signed in. Please log in to save your sparks/influences.'); // Use aiError for now, could add a separate state for this
+      return;
+    }
+
+    try {
+      // Update the user's profile in the 'users' table with sparks/influences data
+      const { data, error } = await supabase
+        .from('users')
+        .update({ sparks_influences: sparksInfluences }) // Assuming a column named 'sparks_influences'
+        .eq('id', user.id); // Filter by user ID
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('Sparks/influences data saved successfully!', data);
+      // Optionally, display a success message to the user
+      setAiError('Sparks/influences saved successfully!'); // Use aiError for now
+    } catch (error) {
+      console.error('Error saving sparks/influences data:', error.message);
+      setAiError(`Error saving sparks/influences: ${error.message}`); // Use aiError for now
+    }
+  };
+
 
   return (
     <div id="profile-page" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-2xl mt-8 text-gray-200">
+      {fetchError && <p className="text-red-500 text-center mb-4">{fetchError}</p>} {/* Display fetch error message */}
       {/* Header/Banner Area */}
       <div
         id="profile-banner"
@@ -430,8 +603,12 @@ function ProfilePage() {
         <button
           className="ml-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
           onClick={handleAddSpark}
+          disabled={connectionStatus !== 'not_connected'} // Disable if already connected or pending
         >
-          Add Spark
+          {connectionStatus === 'not_connected' && 'Add Spark'}
+          {connectionStatus === 'pending' && 'Pending'}
+          {connectionStatus === 'connected' && 'Connected'}
+          {connectionStatus === 'error' && 'Error'}
         </button>
       </div>
 
@@ -448,9 +625,13 @@ function ProfilePage() {
         {userPosts.length > 0 ? (
           userPosts.map(post => (
             <div key={post.id} className="bg-gray-800 p-4 rounded-lg mb-4">
-              {/* TODO: Display rich text content */}
-              <p className="text-gray-200">{post.content}</p>
-              {/* TODO: Display timestamp, likes, comments, etc. */}
+              {/* Display rich text content */}
+              <div className="text-gray-200" dangerouslySetInnerHTML={{ __html: post.content }}></div>
+              {/* Display timestamp */}
+              {post.created_at && (
+                <p className="text-gray-400 text-sm mt-2">Posted on: {new Date(post.created_at).toLocaleString()}</p>
+              )}
+              {/* TODO: Display likes, comments, etc. */}
             </div>
           ))
         ) : (
@@ -461,20 +642,49 @@ function ProfilePage() {
       {/* My Writing / Portfolio Section */}
       <div className="mt-4 pt-4 border-t border-gray-700">
         <h3 className="text-lg font-bold mb-2">My Writing / Portfolio</h3>
-        {/* TODO: Implement rich text editor and display user's writing/portfolio */}
-        <p className="text-gray-200">This section will display the user's writing or portfolio.</p>
+        {/* TODO: Implement fetching and displaying saved writing/portfolio */}
+        <textarea
+          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          rows="6"
+          placeholder="Share your writing or portfolio links/excerpts here..."
+          value={writingPortfolio}
+          onChange={(e) => setWritingPortfolio(e.target.value)}
+        ></textarea>
+        <div className="flex justify-end mt-2">
+          <button
+            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            onClick={handleSaveWritingPortfolio} // TODO: Implement save function
+          >
+            Save Writing/Portfolio
+          </button>
+        </div>
       </div>
 
       {/* Sparks / Influences Section */}
       <div className="mt-4 pt-4 border-t border-gray-700">
         <h3 className="text-lg font-bold mb-2">Sparks / Influences</h3>
-        {/* TODO: Implement rich text editor and display user's sparks/influences */}
-        <p className="text-gray-200">This section will display the user's sparks or influences.</p>
+        {/* TODO: Implement fetching and displaying saved sparks/influences */}
+        <textarea
+          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+          rows="4"
+          placeholder="Share your sparks or influences here..."
+          value={sparksInfluences}
+          onChange={(e) => setSparksInfluences(e.target.value)}
+        ></textarea>
+        <div className="flex justify-end mt-2">
+          <button
+            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            onClick={handleSaveSparksInfluences} // TODO: Implement save function
+          >
+            Save Sparks/Influences
+          </button>
+        </div>
       </div>
 
         {/* The Wall / Comments / Guestbook Section */}
         <div className="mt-4 pt-4 border-t border-gray-700">
           <h3 className="text-lg font-bold mb-2">The Wall / Comments / Guestbook</h3>
+          {aiError && <p className="text-red-500 text-center mb-4">{aiError}</p>} {/* Display error message for comments */}
           {/* Comment Submission Form */}
           {/* Comment Submission Form */}
           <div className="mb-4">
@@ -489,7 +699,7 @@ function ProfilePage() {
           </div>
           <div className="flex justify-end">
             <button
-              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded rounded focus:outline-none focus:shadow-outline"
               onClick={handlePostComment}
               disabled={postingComment || !newComment.trim()} // Disable button while posting or if comment is empty
             >
@@ -538,6 +748,7 @@ function ProfilePage() {
             id="ai-styling-button"
             className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
             onClick={handleAIStylingClick}
+            disabled={!isApiKeyLoaded} // Disable button if API key is not loaded
           >
               AI Style My Profile
           </button>
@@ -554,7 +765,10 @@ function ProfilePage() {
       {showAIStyling && (
         <div id="ai-styling-interface" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-sm mt-8 text-gray-200">
             <h2 className="text-2xl font-bold text-center mb-6">AI Profile Styling</h2>
-            {error && <p className="text-red-500 text-center mb-4">{error}</p>} {/* Display error message */}
+            {aiError && <p className="text-red-500 text-center mb-4">{aiError}</p>} {/* Display error message for AI styling */}
+            {!isApiKeyLoaded && (
+              <p className="text-red-500 text-center mb-4">AI styling is unavailable because the GEMINI_API_KEY is not loaded.</p>
+            )}
             <div className="mb-4">
                 <label htmlFor="ai-prompt" className="block text-gray-200 text-sm font-bold mb-2">Enter your styling prompt:</label>
                 <textarea
@@ -564,7 +778,7 @@ function ProfilePage() {
                   placeholder="e.g., 'A futuristic cityscape with neon lights'"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  disabled={generatingStyle} // Disable input while generating
+                  disabled={generatingStyle || !isApiKeyLoaded} // Disable input while generating or if API key is not loaded
                 ></textarea>
             </div>
             <div className="flex items-center justify-between">
@@ -572,14 +786,17 @@ function ProfilePage() {
                   id="generate-style-button"
                   className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                   onClick={handleGenerateStyleClick}
-                  disabled={generatingStyle || profileData.freeAiStylesUsed >= FREE_AI_STYLE_LIMIT} // Disable button while generating or if limit reached
+                  disabled={generatingStyle || profileData.free_ai_styles_used >= FREE_AI_STYLE_LIMIT || !isApiKeyLoaded} // Disable button while generating, if limit reached, or if API key is not loaded
                 >
-                  {generatingStyle ? 'Generating...' : profileData.freeAiStylesUsed >= FREE_AI_STYLE_LIMIT ? 'Limit Reached' : 'Generate Style'}
+                  {generatingStyle ? 'Generating...' : profileData.free_ai_styles_used >= FREE_AI_STYLE_LIMIT ? 'Limit Reached' : 'Generate Style'}
                 </button>
             </div>
-            {profileData.freeAiStylesUsed >= FREE_AI_STYLE_LIMIT && (
-                <p className="text-center text-sm mt-4">You have used {profileData.freeAiStylesUsed} of {FREE_AI_STYLE_LIMIT} free AI styles.</p>
-                // TODO: Add upgrade link/button
+            {profileData.free_ai_styles_used >= FREE_AI_STYLE_LIMIT && ( // Use free_ai_styles_used
+                <div className="text-center text-sm mt-4">
+                    <p>You have used {profileData.free_ai_styles_used} of {FREE_AI_STYLE_LIMIT} free AI styles.</p>
+                    {/* Placeholder for upgrade link/button */}
+                    <p className="text-blue-400 cursor-pointer">Click here to upgrade for more AI styles</p>
+                </div>
             )}
         </div>
       )}
@@ -589,18 +806,34 @@ function ProfilePage() {
         <h3 className="text-lg font-bold mb-4">Account Settings</h3>
         {accountSettingsError && <p className="text-red-500 text-center mb-4">{accountSettingsError}</p>} {/* Display account settings error message */}
         <div className="mb-4">
-          <label htmlFor="email" className="block text-gray-200 text-sm font-bold mb-2">Email Address</label>
+          <label htmlFor="current-password" className="block text-gray-200 text-sm font-bold mb-2">Current Password (for email change)</label>
           <input
-            type="email"
-            id="email"
+            type="password"
+            id="current-password"
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={profileData.email || ''} // Display current email, or empty string if not available
-            onChange={(e) => setProfileData({ ...profileData, email: e.target.value })} // Update email in local state
-            disabled // Email updates require re-authentication, so disable for now
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
           />
-          {/* TODO: Implement email update with re-authentication */}
         </div>
         <div className="mb-4">
+          <label htmlFor="new-email" className="block text-gray-200 text-sm font-bold mb-2">New Email Address</label>
+          <input
+            type="email"
+            id="new-email"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <button
+            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            onClick={handleEmailChange} // Call a new function for email change
+          >
+            Change Email
+          </button>
+        </div>
+        <div className="mb-4 mt-8"> {/* Added margin-top for separation */}
           <label htmlFor="password" className="block text-gray-200 text-sm font-bold mb-2">New Password</label>
           <input
             type="password"

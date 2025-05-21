@@ -7,18 +7,20 @@ function ProfileSetup({ onProfileSaved }) {
   const [shortBio, setShortBio] = useState('');
   const [profilePicture, setProfilePicture] = useState(null);
   const [loading, setLoading] = useState(false); // State to manage loading
+  const [error, setError] = useState(null); // State to manage errors
 
   // Handle Profile Setup form submission
   const handleProfileSetup = async (event) => {
     event.preventDefault();
     setLoading(true); // Set loading to true
+    setError(null); // Clear previous errors
 
     let profilePictureUrl = '';
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       console.error('No user is signed in.');
+      setError('No user is signed in. Please log in.'); // Display error message
       setLoading(false);
-      // TODO: Handle case where no user is signed in (shouldn't happen if routed correctly)
       return;
     }
 
@@ -36,8 +38,8 @@ function ProfileSetup({ onProfileSaved }) {
 
       if (uploadError) {
         console.error('Error uploading profile picture:', uploadError.message);
+        setError(`Error uploading profile picture: ${uploadError.message}`); // Display error message
         setLoading(false);
-        // TODO: Display error message to user
         return;
       }
 
@@ -73,7 +75,7 @@ function ProfileSetup({ onProfileSaved }) {
       onProfileSaved();
     } catch (error) {
       console.error('Error saving profile data to Supabase:', error.message);
-      // TODO: Display error message to user
+      setError(`Error saving profile data: ${error.message}`); // Display error message
     } finally {
       setLoading(false); // Set loading to false
     }
@@ -82,6 +84,7 @@ function ProfileSetup({ onProfileSaved }) {
   return (
     <div id="profile-setup" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-sm mt-8 text-gray-200">
       <h2 className="text-2xl font-bold text-center mb-6">Set Up Your Profile</h2>
+      {error && <p className="text-red-500 text-center mb-4">{error}</p>} {/* Display error message */}
       <form onSubmit={handleProfileSetup}>
         <div className="mb-4">
           <label htmlFor="display-name" className="block text-gray-200 text-sm font-bold mb-2">Display Name</label>

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import supabase from './supabaseConfig'; // Import the Supabase client
+import { generateContent } from './genAiService'; // Import the GenAI service
 
 // Component for creating a new post
 function CreatePost() {
   const [postContent, setPostContent] = useState('');
   const [loading, setLoading] = useState(false); // State to manage loading
+  const [aiLoading, setAiLoading] = useState(false); // State to manage AI suggestion loading
 
   // TODO: Implement rich text editor instead of a simple textarea
   // TODO: Implement basic tagging functionality
@@ -56,6 +58,20 @@ function CreatePost() {
     }
   };
 
+  const handleGenerateSuggestion = async () => {
+    setAiLoading(true);
+    try {
+      const prompt = "Generate a short social media post suggestion:"; // Define a basic prompt
+      const suggestion = await generateContent(prompt);
+      setPostContent(suggestion); // Set the generated content to the textarea
+    } catch (error) {
+      console.error("Error generating AI suggestion:", error);
+      // TODO: Display error message to user
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-xl mt-8 text-gray-200">
       <h2 className="text-2xl font-bold text-center mb-6">Create New Post</h2>
@@ -68,17 +84,24 @@ function CreatePost() {
           placeholder="Write your post here..."
           value={postContent}
           onChange={(e) => setPostContent(e.target.value)}
-          disabled={loading} // Disable input while loading
+          disabled={loading || aiLoading} // Disable input while loading or AI is generating
         ></textarea>
       </div>
       {/* TODO: Add tagging input */}
       <div className="flex items-center justify-between">
         <button
-          className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2" // Added margin-right
           onClick={handleCreatePost}
-          disabled={loading} // Disable button while loading
+          disabled={loading || aiLoading} // Disable button while loading or AI is generating
         >
           {loading ? 'Sharing...' : 'Share Post'}
+        </button>
+        <button
+          className="bg-green-500 hover:bg-green-400 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          onClick={handleGenerateSuggestion}
+          disabled={loading || aiLoading} // Disable button while loading or AI is generating
+        >
+          {aiLoading ? 'Generating...' : 'Get AI Suggestion'}
         </button>
       </div>
     </div>
