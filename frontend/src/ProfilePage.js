@@ -21,6 +21,7 @@ function ProfilePage() {
   const [aiError, setAiError] = useState(null); // State to manage errors specifically for AI styling
   const [profileBannerUrl, setProfileBannerUrl] = useState(''); // State for profile banner image URL
   const [fetchError, setFetchError] = useState(null); // State to manage errors during data fetching
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false); // State to manage upgrade modal visibility
   const [newPassword, setNewPassword] = useState(''); // State for new password input
   const [confirmPassword, setConfirmPassword] = useState(''); // State for confirm password input
   const [accountSettingsError, setAccountSettingsError] = useState(null); // State for account settings errors
@@ -62,6 +63,8 @@ function ProfilePage() {
           if (profileData) {
             setProfileData(profileData);
             setProfileBannerUrl(profileData.profile_picture_url || ''); // Set initial banner URL (using profile_picture_url for banner for now, will adjust later if needed)
+            setWritingPortfolio(profileData.writing_portfolio || ''); // Set initial writing/portfolio
+            setSparksInfluences(profileData.sparks_influences || ''); // Set initial sparks/influences
 
             // Fetch user's latest posts
             const { data: postsData, error: postsError } = await supabase
@@ -333,9 +336,9 @@ function ProfilePage() {
 
     // Check free tier limit
     if (profileData.free_ai_styles_used >= FREE_AI_STYLE_LIMIT) { // Use free_ai_styles_used
-      console.log('Free AI style limit reached. Upgrade for more.');
-      setAiError('Free AI style limit reached. Upgrade for more.'); // Set error state for AI styling
-      // TODO: Implement upgrade prompt
+      console.log('Free AI style limit reached. Show upgrade modal.');
+      setShowUpgradeModal(true); // Show the upgrade modal
+      setGeneratingStyle(false); // Ensure loading is off
       return;
     }
 
@@ -437,6 +440,11 @@ function ProfilePage() {
     } finally {
       setGeneratingStyle(false); // Set generating style to false
     }
+  };
+
+  // Handle closing the upgrade modal
+  const handleCloseUpgradeModal = () => {
+    setShowUpgradeModal(false);
   };
 
   // Handle password change
@@ -570,33 +578,35 @@ function ProfilePage() {
 
 
   return (
-    <div id="profile-page" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-2xl mt-8 text-gray-200">
+    <div id="profile-page" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-2xl mx-auto mt-8 text-gray-200"> {/* Added mx-auto for centering */}
       {fetchError && <p className="text-red-500 text-center mb-4">{fetchError}</p>} {/* Display fetch error message */}
+      
       {/* Header/Banner Area */}
       <div
         id="profile-banner"
-        className="w-full h-40 bg-gray-300 rounded-t-lg mb-4 flex items-center justify-center text-gray-600"
+        className="w-full h-40 bg-gray-300 rounded-t-lg mb-4 flex items-center justify-center text-gray-600 overflow-hidden" // Added overflow-hidden
         style={{ backgroundImage: profileBannerUrl ? `url('${profileBannerUrl}')` : '', backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
         {!profileBannerUrl && 'Profile Banner Area (AI Image Here)'}
       </div>
 
-      <div className="flex items-center mb-4">
+      <div className="flex items-center mb-4 -mt-12 px-4"> {/* Adjusted margin-top and added horizontal padding */}
         {/* Profile Picture */}
         <img
           id="profile-pic"
           src={profileData.profilePictureUrl || 'placeholder-profile.png'}
           alt="User profile picture"
-          className="w-20 h-20 rounded-full border-4 border-white -mt-12 mr-4"
+          className="w-24 h-24 rounded-full border-4 border-white mr-4 object-cover" // Increased size and added object-cover
+          onError={(e) => { e.target.onerror = null; e.target.src = 'placeholder-profile.png'; }} // Added error handling for image
         />
 
-        <div>
+        <div className="flex-grow"> {/* Added flex-grow to take available space */}
           {/* Display Name */}
           <h2 id="profile-display-name" className="text-2xl font-bold">{profileData.displayName}</h2>
           {/* Username (assuming UID for now, can be changed later) */}
-          <p id="profile-username" className="text-gray-200">@{profileData.uid}</p>
+          <p id="profile-username" className="text-gray-400">@{profileData.uid}</p> {/* Changed text color for better contrast */}
         </div>
-        {/* Add Spark / Follow Button Placeholder */}
+        
         {/* Add Spark / Follow Button */}
         {/* TODO: Implement logic to show different button states (e.g., "Pending", "Connected") */}
         <button
@@ -612,14 +622,13 @@ function ProfilePage() {
       </div>
 
       {/* Short Bio */}
-      <div className="mb-4">
+      <div className="mb-4 px-4"> {/* Added horizontal padding */}
         <h3 className="text-lg font-bold mb-2">About Me</h3>
-        <p id="profile-bio" className="text-gray-200">{profileData.shortBio}</p>
+        <p id="profile-bio" className="text-gray-300">{profileData.shortBio}</p> {/* Changed text color */}
       </div>
 
       {/* My Latest Posts Section */}
-      {/* My Latest Posts Section */}
-      <div className="mt-8 pt-4 border-t border-gray-700">
+      <div className="mt-8 pt-4 border-t border-gray-700 px-4"> {/* Added horizontal padding */}
         <h3 className="text-lg font-bold mb-2">My Latest Posts</h3>
         {userPosts.length > 0 ? (
           userPosts.map(post => (
@@ -634,57 +643,70 @@ function ProfilePage() {
             </div>
           ))
         ) : (
-          <p className="text-gray-200">No posts yet.</p>
+          <p className="text-gray-300">No posts yet.</p> {/* Changed text color */}
         )}
       </div>
 
       {/* My Writing / Portfolio Section */}
-      <div className="mt-4 pt-4 border-t border-gray-700">
+      <div className="mt-4 pt-4 border-t border-gray-700 px-4"> {/* Added horizontal padding */}
         <h3 className="text-lg font-bold mb-2">My Writing / Portfolio</h3>
-        {/* TODO: Implement fetching and displaying saved writing/portfolio */}
-        <textarea
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-          rows="6"
-          placeholder="Share your writing or portfolio links/excerpts here..."
-          value={writingPortfolio}
-          onChange={(e) => setWritingPortfolio(e.target.value)}
-        ></textarea>
-        <div className="flex justify-end mt-2">
-          <button
-            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            onClick={handleSaveWritingPortfolio} // TODO: Implement save function
-          >
-            Save Writing/Portfolio
-          </button>
-        </div>
+        {/* Display saved writing/portfolio */}
+        {writingPortfolio ? (
+          <p className="text-gray-300">{writingPortfolio}</p>
+        ) : (
+          <textarea
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            rows="6"
+            placeholder="Share your writing or portfolio links/excerpts here..."
+            value={writingPortfolio}
+            onChange={(e) => setWritingPortfolio(e.target.value)}
+          ></textarea>
+        )}
+        {/* Only show save button if textarea is visible */}
+        {!writingPortfolio && (
+          <div className="flex justify-end mt-2">
+            <button
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              onClick={handleSaveWritingPortfolio}
+            >
+              Save Writing/Portfolio
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Sparks / Influences Section */}
-      <div className="mt-4 pt-4 border-t border-gray-700">
+      <div className="mt-4 pt-4 border-t border-gray-700 px-4"> {/* Added horizontal padding */}
         <h3 className="text-lg font-bold mb-2">Sparks / Influences</h3>
-        {/* TODO: Implement fetching and displaying saved sparks/influences */}
-        <textarea
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-          rows="4"
-          placeholder="Share your sparks or influences here..."
-          value={sparksInfluences}
-          onChange={(e) => setSparksInfluences(e.target.value)}
-        ></textarea>
-        <div className="flex justify-end mt-2">
-          <button
-            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            onClick={handleSaveSparksInfluences} // TODO: Implement save function
-          >
-            Save Sparks/Influences
-          </button>
-        </div>
+        {/* Display saved sparks/influences */}
+        {sparksInfluences ? (
+          <p className="text-gray-300">{sparksInfluences}</p>
+        ) : (
+          <textarea
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            rows="4"
+            placeholder="Share your sparks or influences here..."
+            value={sparksInfluences}
+            onChange={(e) => setSparksInfluences(e.target.value)}
+          ></textarea>
+        )}
+        {/* Only show save button if textarea is visible */}
+        {!sparksInfluences && (
+          <div className="flex justify-end mt-2">
+            <button
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              onClick={handleSaveSparksInfluences}
+            >
+              Save Sparks/Influences
+            </button>
+          </div>
+        )}
       </div>
 
         {/* The Wall / Comments / Guestbook Section */}
-        <div className="mt-4 pt-4 border-t border-gray-700">
+        <div className="mt-4 pt-4 border-t border-gray-700 px-4"> {/* Added horizontal padding */}
           <h3 className="text-lg font-bold mb-2">The Wall / Comments / Guestbook</h3>
           {aiError && <p className="text-red-500 text-center mb-4">{aiError}</p>} {/* Display error message for comments */}
-          {/* Comment Submission Form */}
           {/* Comment Submission Form */}
           <div className="mb-4">
             <textarea
@@ -698,7 +720,7 @@ function ProfilePage() {
           </div>
           <div className="flex justify-end">
             <button
-              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded rounded focus:outline-none focus:shadow-outline"
+              className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
               onClick={handlePostComment}
               disabled={postingComment || !newComment.trim()} // Disable button while posting or if comment is empty
             >
@@ -714,35 +736,35 @@ function ProfilePage() {
                 <CommentItem key={comment.id} comment={comment} />
               ))
             ) : (
-              <p className="text-gray-200">No comments yet.</p>
+              <p className="text-gray-300">No comments yet.</p> {/* Changed text color */}
             )}
           </div>
         </div>
 
         {/* Connections List Section */}
-        {/* Connections List Section */}
-        <div className="mt-4 pt-4 border-t border-gray-700">
+        <div className="mt-4 pt-4 border-t border-gray-700 px-4"> {/* Added horizontal padding */}
           <h3 className="text-lg font-bold mb-2">Connections</h3>
           {connectedUsersProfileData.length > 0 ? (
             <ul>
               {connectedUsersProfileData.map(connectedUser => (
                 <li key={connectedUser.id} className="flex items-center mb-2">
                   <img
-                    src={connectedUser.profilePictureUrl || 'placeholder-profile.png'}
-                    alt={`${connectedUser.displayName}'s profile picture`}
-                    className="w-8 h-8 rounded-full mr-2"
+                    src={connectedUser.profile_picture_url || 'placeholder-profile.png'} // Use profile_picture_url
+                    alt={`${connectedUser.display_name}'s profile picture`} // Use display_name
+                    className="w-8 h-8 rounded-full mr-2 object-cover" // Added object-cover
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'placeholder-profile.png'; }} // Added error handling
                   />
-                  <span className="text-gray-200">{connectedUser.displayName}</span>
+                  <span className="text-gray-300">{connectedUser.display_name}</span> {/* Use display_name */}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-200">No connections yet.</p>
+            <p className="text-gray-300">No connections yet.</p> {/* Changed text color */}
           )}
         </div>
 
         {/* AI Profile Styling Access Point */}
-        <div className="mt-8 flex justify-center space-x-4">
+        <div className="mt-8 flex justify-center space-x-4 px-4"> {/* Added horizontal padding */}
           <button
             id="ai-styling-button"
             className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -762,7 +784,7 @@ function ProfilePage() {
 
       {/* AI Styling Interface (Conditionally Rendered) */}
       {showAIStyling && (
-        <div id="ai-styling-interface" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-sm mt-8 text-gray-200">
+        <div id="ai-styling-interface" className="bg-blue-900 p-8 rounded-lg shadow-md w-full max-w-sm mx-auto mt-8 text-gray-200"> {/* Added mx-auto for centering */}
             <h2 className="text-2xl font-bold text-center mb-6">AI Profile Styling</h2>
             {aiError && <p className="text-red-500 text-center mb-4">{aiError}</p>} {/* Display error message for AI styling */}
             {!isApiKeyLoaded && (
@@ -800,67 +822,24 @@ function ProfilePage() {
         </div>
       )}
 
-      {/* Basic Account Settings */}
-      <div className="mt-8 pt-4 border-t border-gray-700">
-        <h3 className="text-lg font-bold mb-4">Account Settings</h3>
-        {accountSettingsError && <p className="text-red-500 text-center mb-4">{accountSettingsError}</p>} {/* Display account settings error message */}
-        <div className="mb-4">
-          <label htmlFor="current-password" className="block text-gray-200 text-sm font-bold mb-2">Current Password (for email change)</label>
-          <input
-            type="password"
-            id="current-password"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
+      {/* Upgrade Modal (Conditionally Rendered) */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-blue-900 p-8 rounded-lg shadow-md text-gray-200 max-w-sm w-full">
+            <h2 className="text-2xl font-bold text-center mb-4">Upgrade Required</h2>
+            <p className="text-center mb-6">You have reached your limit of {FREE_AI_STYLE_LIMIT} free AI styles. Upgrade to generate more!</p>
+            {/* TODO: Add actual upgrade link/button */}
+            <div className="flex justify-center">
+              <button
+                className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                onClick={handleCloseUpgradeModal}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="mb-4">
-          <label htmlFor="new-email" className="block text-gray-200 text-sm font-bold mb-2">New Email Address</label>
-          <input
-            type="email"
-            id="new-email"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <button
-            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            onClick={handleEmailChange} // Call a new function for email change
-          >
-            Change Email
-          </button>
-        </div>
-        <div className="mb-4 mt-8"> {/* Added margin-top for separation */}
-          <label htmlFor="password" className="block text-gray-200 text-sm font-bold mb-2">New Password</label>
-          <input
-            type="password"
-            id="password"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-        </div>
-        <div className="mb-6">
-          <label htmlFor="confirm-password" className="block text-gray-200 text-sm font-bold mb-2">Confirm New Password</label>
-          <input
-            type="password"
-            id="confirm-password"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <button
-            className="bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-            onClick={handlePasswordChange}
-          >
-            Change Password
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
