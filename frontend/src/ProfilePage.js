@@ -86,7 +86,6 @@ function ProfilePage() {
             if (connectionsError) {
               throw connectionsError;
             }
-            setUserConnections(connectionsData);
 
             // Fetch profile comments
             const { data: commentsData, error: commentsError } = await supabase
@@ -385,7 +384,7 @@ function ProfilePage() {
         const fileName = `${Date.now()}.${fileExt}`;
         const filePath = `${user.id}/${fileName}`; // Use user.id for Supabase user
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('profile_banners') // Assuming a bucket named 'profile_banners'
           .upload(filePath, blob, {
             cacheControl: '3600',
@@ -407,7 +406,7 @@ function ProfilePage() {
 
         // Save the downloadUrl and update free generation count in Supabase and local state
         const updatedFreeCount = (profileData.free_ai_styles_used || 0) + 1; // Use free_ai_styles_used
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('users')
           .update({
             profile_picture_url: downloadUrl, // Save the generated image URL (using profile_picture_url)
@@ -490,7 +489,7 @@ function ProfilePage() {
       }
 
       // If re-authentication is successful, update the email
-      const { data, error: updateError } = await supabase.auth.updateUser({
+      const { error: updateError } = await supabase.auth.updateUser({
         email: newEmail,
       });
 
@@ -587,7 +586,7 @@ function ProfilePage() {
         <img
           id="profile-pic"
           src={profileData.profilePictureUrl || 'placeholder-profile.png'}
-          alt="Profile Picture"
+          alt="User profile picture"
           className="w-20 h-20 rounded-full border-4 border-white -mt-12 mr-4"
         />
 

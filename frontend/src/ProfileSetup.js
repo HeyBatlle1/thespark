@@ -29,7 +29,7 @@ function ProfileSetup({ onProfileSaved }) {
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`; // Use user.id for Supabase user
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('profile_pictures') // Assuming a bucket named 'profile_pictures'
         .upload(filePath, profilePicture, {
           cacheControl: '3600',
@@ -53,7 +53,7 @@ function ProfileSetup({ onProfileSaved }) {
 
     try {
       // Save profile data to Supabase
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('users')
         .insert([
           {
